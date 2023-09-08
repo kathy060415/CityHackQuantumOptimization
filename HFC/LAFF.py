@@ -1,5 +1,29 @@
 import time
+import pandas as pd
 
+df = pd.read_csv('box_data.csv').set_index('Box Type')
+
+cargo_list = []
+base_area_list = []
+
+# Iterate over each row
+for index, rows in df.iterrows():
+    # Create list for the current row
+    my_list =[rows.Length, rows.Width, rows.Height, rows.Base_area, rows.Volume, rows.Weight]
+    base_area = rows.Base_area
+
+    # append the list to the final list
+    cargo_list.append(my_list)
+    base_area_list.append(base_area)
+
+
+# print list
+print(cargo_list)
+
+base_area_list.sort()
+print(base_area_list)
+df.head()
+df.dtypes
 
 def calculate_space_efficiency(container_dimensions, cargo_list):
     # Calculate volume of container vc
@@ -88,7 +112,6 @@ def calculate_space_efficiency(container_dimensions, cargo_list):
 
 # sample input
 container_dimensions = (70, 70, 70)
-cargo_list = [(5, 5, 5, 100), (2, 3, 4, 50), (7, 7, 7, 200), (6, 6, 6, 200), (4, 6, 8, 150)]
 
 # Record the start time
 start_time = time.time()
