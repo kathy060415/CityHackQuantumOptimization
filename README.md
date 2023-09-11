@@ -24,8 +24,8 @@ All the columns contain integer values.
 
 ### Variables
 
-1. \( x[i] \): A binary variable that represents whether bin \( i \) is used or not.
-2. \( e[i, j] \): A binary variable that indicates whether item \( j \) is placed in bin \( i \).
+1. x[i] : A binary variable that represents whether bin \( i \) is used or not.
+2. e[i, j] : A binary variable that indicates whether item \( j \) is placed in bin \( i \).
 
 ### Objective Function
 
