@@ -63,8 +63,8 @@ mdl.minimize(objective)
 ##===================##
 # Additional Variables
 ##===================##
-ver = mdl.continuous_var_list([f"Ver{j}" for j in range(m)], lb=0)  # volume of each cargo
-base = mdl.continuous_var_list([f"base{j}" for j in range(m)], lb=0)  # base area of each cargo
+ver = mdl.continuous_var_list([f"Ver{j}" for j in range(m)], lb=0, ub=volume_list[len(volume_list)-1])  # volume of each cargo
+base = mdl.continuous_var_list([f"base{j}" for j in range(m)], lb=0, ub=base_area_list[len(base_area_list)-1])  # base area of each cargo
 counter = mdl.integer_var(lb=0, name="counter")  # number of cargos placed
 sn = mdl.continuous_var(lb=0, ub=1, name="Sn")  # space utilization
 
