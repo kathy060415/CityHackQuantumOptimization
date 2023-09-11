@@ -60,19 +60,6 @@ mdl.minimize(objective)
 #3. Binary variables e[i,j] are defined to represent whether each item j is in bin i.
 #4. The objective function is set to minimize the sum of x[i], which represents minimizing the number of bins used
 
-
-##==============##
-# Constraints
-for i in range(n):
-    # Second set of constraints: sum of box area < container area
-    constraint1 = mdl.sum(base_area_list[i] for i in range(m))
-    mdl.add_constraint(constraint1 <= Q, f"cons1,{i}")
-
-for i in range(n):
-    constraint2 = mdl.sum(volume_list[i] for i in range(m))
-    mdl.add_constraint(constraint2 <= container_volume, f"cons2,{i}")
-
-
 ##===================##
 # Additional Variables
 ##===================##
@@ -85,6 +72,17 @@ sn = mdl.continuous_var(lb=0, ub=1, name="Sn")  # space utilization
 remaining_base = mdl.continuous_var_list([f"remaining_base{i}" for i in range(n)], lb=0, ub=container_base_area)  # Bounded
 remaining_volume = mdl.continuous_var_list([f"remaining_volume{i}" for i in range(n)], lb=0, ub=container_volume)  # Bounded
 
+
+##==============##
+# Constraints
+for i in range(n):
+    # Second set of constraints: sum of box area < container area
+    constraint1 = mdl.sum(base_area_list[i] for i in range(m))
+    mdl.add_constraint(constraint1 <= Q, f"cons1,{i}")
+
+for i in range(n):
+    constraint2 = mdl.sum(volume_list[i] for i in range(m))
+    mdl.add_constraint(constraint2 <= container_volume, f"cons2,{i}")
 
 ##===================##
 # Additional Constraints
