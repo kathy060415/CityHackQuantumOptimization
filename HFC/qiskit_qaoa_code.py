@@ -82,8 +82,9 @@ counter = mdl.integer_var(lb=0, name="counter")  # number of cargos placed
 sn = mdl.continuous_var(lb=0, ub=1, name="Sn")  # space utilization
 
 # To track remaining base & volume
-remaining_base = mdl.continuous_var_list([f"remaining_base{i}" for i in range(n)], lb=0)  # Remaining base area in each bin i
-remaining_volume = mdl.continuous_var_list([f"remaining_volume{i}" for i in range(n)], lb=0)  # Remaining volume in each bin i
+remaining_base = mdl.continuous_var_list([f"remaining_base{i}" for i in range(n)], lb=0, ub=container_base_area)  # Bounded
+remaining_volume = mdl.continuous_var_list([f"remaining_volume{i}" for i in range(n)], lb=0, ub=container_volume)  # Bounded
+
 
 ##===================##
 # Additional Constraints
@@ -99,23 +100,26 @@ for i in range(n):
     for j in range(m):
         # Update remaining base area if e[i, j] = 1 (i.e., if item j is placed in bin i)
         mdl.add_constraint(remaining_base[i] >= container_base_area - mdl.sum(e[i*m+j] * base_area_list[j] for j in range(m)), f"UpdateRemainingBase{i}{j}")
-        
-        # Update remaining volume if e[i, j] = 1 (i.e., if item j is placed in bin i)
+
+         # Update remaining volume if e[i, j] = 1 (i.e., if item j is placed in bin i)
         mdl.add_constraint(remaining_volume[i] >= container_volume - mdl.sum(e[i*m+j] * volume_list[j] for j in range(m)), f"UpdateRemainingVolume{i}{j}")
+
 
 # Constraint: Cargo volume should be less than or equal to container volume
 for j in range(m):
     mdl.add_constraint(ver[j] <= container_volume, f"VolumeConstraint{j}")
 
-# Constraint: Base area of each cargo j should be less than remaining base area in the container
-# Assuming remaining_base is a variable that keeps track of remaining base area in the container
-for j in range(m):
-    mdl.add_constraint(base[j] <= remaining_base, f"BaseAreaConstraint{j}")
+# Corrected Constraints: Compare base[j] and ver[j] with remaining_base[i] and remaining_volume[i] for each bin i
+for i in range(n):
+    for j in range(m):
+        
+        # Assuming remaining_base is a variable that keeps track of remaining base area in the container
+        # Constraint: Base area of each cargo j should be less than remaining base area in the container
+        mdl.add_constraint(base[j] <= remaining_base[i], f"BaseAreaConstraint{i}{j}")
 
-# Constraint: Volume of each cargo j should be less than remaining volume in the container
-# Assuming remaining_volume is a variable that keeps track of remaining volume in the container
-for j in range(m):
-    mdl.add_constraint(ver[j] <= remaining_volume, f"RemainingVolumeConstraint{j}")
+        # Constraint: Volume of each cargo j should be less than remaining volume in the container
+        # Assuming remaining_volume is a variable that keeps track of remaining volume in the container
+        mdl.add_constraint(ver[j] <= remaining_volume[i], f"RemainingVolumeConstraint{i}{j}")
 
 
 ##=============##
