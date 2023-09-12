@@ -152,7 +152,7 @@ print(qubo.export_as_lp_string())
 result = cplex.solve(qubo)
 print(result)
 
-##==============##
+##=================##
 # Solving Quadratic program using QAOA
 from qiskit import Aer
 backend = Aer.get_backend("qasm_simulator")
@@ -160,5 +160,39 @@ qaoa = MinimumEigenOptimizer(QAOA(reps=1, quantum_instance=backend))
 result_qaoa = qaoa.solve(qubo)
 print(result_qaoa)
 
+##==================##
 # Calculate and print the space utilization
+##==================##
+
+# Define a function to calculate space utilization for a given result
+def calculate_space_utilization(result, n, m, volume_list):
+    # Initialize an empty dictionary to store total volume for each bin
+    total_volume_of_bin = {i: 0 for i in range(n)}
+    space_utilization_of_bin = {i: 0 for i in range(n)}
+
+    # Extract optimized variable values
+    optimized_values = result.x
+    e_values = optimized_values[len(total_volume_of_bin):]  # Assuming e starts after x in the variable list
+
+    # Calculate the total volume for each bin
+    for i in range(n):
+        for j in range(m):
+            #If the value is greater than or equal to 0.5, it is likely that the optimal integer solution would have this variable set to 1.
+            if e_values[i * m + j] >= 0.5:
+                total_volume_of_bin[i] += volume_list[j]
+
+    # Calculate space utilization for each bin
+    for i in range(n):
+        if total_volume_of_bin[i] > 0:  # To avoid division by zero
+            space_utilization_of_bin[i] = total_volume_of_bin[i] / container_volume
+
+    return space_utilization_of_bin
+
+# Calculate space utilization based on CPLEX result
+space_utilization_cplex = calculate_space_utilization(result, n, m, volume_list)
+print("Space Utilization (CPLEX):", space_utilization_cplex)
+
+# Calculate space utilization based on QAOA result
+space_utilization_qaoa = calculate_space_utilization(result_qaoa, n, m, volume_list)
+print("Space Utilization (QAOA):", space_utilization_qaoa)
 
