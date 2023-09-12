@@ -45,7 +45,7 @@ container_base_area =  2000  # container
 
 # wj = np.amax(base_area_list) #  picking the maximum base area
 
-container_volume = Q * 200
+container_volume = container_base_area * 200
 
 # Construct model using docplex
 mdl = Model("BinPacking")
@@ -77,7 +77,7 @@ remaining_volume = mdl.continuous_var_list([f"remaining_volume{i}" for i in rang
 # Constraints
 for i in range(n):
     # Second set of constraints: sum of box area < container area
-    constraint1 = mdl.sum(base_area_list[i] for i in range(m))
+    constraint1 = mdl.sum(base_area_list[j] for j in range(m))
     mdl.add_constraint(constraint1 <= Q, f"cons1,{i}")
 
 for i in range(n):
@@ -153,6 +153,7 @@ result = cplex.solve(qubo)
 print(result)
 
 ##==============##
+# Solving Quadratic program using QAOA
 from qiskit import Aer
 backend = Aer.get_backend("qasm_simulator")
 qaoa = MinimumEigenOptimizer(QAOA(reps=1, quantum_instance=backend))
@@ -160,4 +161,4 @@ result_qaoa = qaoa.solve(qubo)
 print(result_qaoa)
 
 # Calculate and print the space utilization
-space_utilization = result_qaoa
+
