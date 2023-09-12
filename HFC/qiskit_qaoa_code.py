@@ -78,7 +78,7 @@ remaining_volume = mdl.continuous_var_list([f"remaining_volume{i}" for i in rang
 for i in range(n):
     # Second set of constraints: sum of box area < container area
     constraint1 = mdl.sum(base_area_list[j] for j in range(m))
-    mdl.add_constraint(constraint1 <= Q, f"cons1,{i}")
+    mdl.add_constraint(constraint1 <= container_base_area, f"cons1,{i}")
 
 for i in range(n):
     constraint2 = mdl.sum(volume_list[i] for i in range(m))
@@ -122,6 +122,7 @@ for i in range(n):
 
 ##=============##
 # Solving Quadratic Program using CPLEX
+#qp = QuadraticProgam() will be automatically executed within from_docplex_mp
 qp = from_docplex_mp(mdl)
 
 cplex = CplexOptimizer()
