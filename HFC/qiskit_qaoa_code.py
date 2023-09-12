@@ -121,11 +121,6 @@ for i in range(n):
 
 
 ##=============##
-# convert from DOcplex model to Qiskit Quadratic program
-# qp = QuadraticProgram()
-qp = from_docplex_mp(mdl)
-print(qp.export_as_lp_string())
-
 # Solving Quadratic Program using CPLEX
 qp = from_docplex_mp(mdl)
 
