@@ -1,0 +1,318 @@
+import argparse
+from qiskit.algorithms import QAOA, NumPyMinimumEigensolver
+from qiskit_optimization.converters import InequalityToEquality, IntegerToBinary, LinearEqualityToPenalty
+from itertools import combinations, permutations
+from qiskit_optimization import QuadraticProgram
+from docplex.mp.model import Model
+import numpy as np
+from qiskit import Aer, IBMQ
+from qiskit_optimization.algorithms import MinimumEigenOptimizer
+from qiskit_optimization.algorithms import OptimizationResult
+from qiskit_optimization.translators import from_docplex_mp
+
+
+IBMQ.save_account('0286cd97e8c018b4404e63e6eeb1b007b1257669290d1683454db12113f72dca017dfd679a2ed394419f51d58b614e6c9e6dbdbb1a47afff960a2538395c11c0', overwrite=True)
+IBMQ.load_account()
+
+# mdl = Model('Bin Packing')
+class Cases:
+    """Class for representing cuboid item data in a 3D bin packing problem.
+
+    Args:
+         data: dictionary containing raw information for both bins and cases
+
+    """
+
+    def __init__(self, data):
+        self.case_ids = np.repeat(data["case_ids"], data["quantity"])
+        self.num_cases = np.sum(data["quantity"], dtype=np.int32)
+        self.length = np.repeat(data["case_length"], data["quantity"])
+        self.width = np.repeat(data["case_width"], data["quantity"])
+        self.height = np.repeat(data["case_height"], data["quantity"])
+        print(f'Number of cases: {self.num_cases}')
+
+
+class Bins:
+    """Class for representing cuboid container data in a 3D bin packing problem.
+
+    Args:
+        data: dictionary containing raw information for both bins and cases
+        cases: Instance of ``Cases``, representing cuboid items packed into containers.
+
+    """
+
+    def __init__(self, data, cases):
+        self.length = data["bin_dimensions"][0]
+        self.width = data["bin_dimensions"][1]
+        self.height = data["bin_dimensions"][2]
+        self.num_bins = data["num_bins"]
+      
+
+
+class Variables:
+    """Class that collects all CQM model variables for the 3D bin packing problem.
+
+    Args:
+        model: An instance of ``docplex.Model`` where variables will be added.
+        cases: Instance of ``Cases``, representing cuboid items packed into containers.
+        bins: Instance of ``Bins``, representing containers to pack cases into.
+
+    """
+
+    def __init__(self, cases, bins):
+        num_cases = cases.num_cases
+        num_bins = bins.num_bins
+
+        self.mdl = Model('BinPacking') # Assign the existing model
+
+        # x 
+
+def read_instance(instance_path: str):
+    """Convert instance input files into raw problem data.
+
+    Args:
+        instance_path:  Path to the bin packing problem instance file.
+
+    Returns:
+        data: dictionary containing raw information for both bins and cases.
+
+    """
+
+    data = {"num_bins": 0, "bin_dimensions": [], "quantity": [], "case_ids": [],
+            "case_length": [], "case_width": [], 'case_height': []}
+
+    with open(instance_path) as f:
+        for i, line in enumerate(f):
+            if i == 0:
+                data["num_bins"] = int(line.split()[-1])
+            elif i == 1:
+                data["bin_dimensions"] = [int(i) for i in line.split()[-3:]]
+            elif 2 <= i <= 4:
+                continue
+            else:
+                case_info = list(map(int, line.split()))
+                data["case_ids"].append(case_info[0])
+                data["quantity"].append(case_info[1])
+                data["case_length"].append(case_info[2])
+                data["case_width"].append(case_info[3])
+                data["case_height"].append(case_info[4])
+
+        return data
+
+def _add_bin_on_constraint(vars, bins, cases):
+    num_cases = cases.num_cases
+    num_bins = bins.num_bins
+    if num_bins > 1:
+        for j in range(num_bins):
+            sum_val = vars.mdl.sum(vars.bin_loc[i, j] for i in range(num_cases))
+            vars.mdl.add_constraint((1 - vars.bin_on[j]) * sum_val <= 0, f'bin_on{j}')
+            # vars.mdl.add_constraint((1 - vars.bin_on[j]) *
+            #                         vars.mdl.sum(vars.bin_loc[i, j]) for i in range(num_cases)) <= 0)
+        for j in range(num_bins - 1):
+            vars.mdl.add_constraint(vars.bin_on[j] - vars.bin_on[j + 1] >= 0, f'bin_use_order{j}')
+
+
+def _add_orientation_constraints(vars, cases):
+    '''
+                         label=f'orientation_{i}')
+    # In our function, cqm =
+        qp = QuadraticProgram() ->
+        ineq2eq = InequalityToEquality(); qp_eq = ineq2eq.convert(qp) ->
+        int2bin = IntegerToBinary(); qp_eq_bin = int2bin.convert(qp_eq) ->
+        lineq2penalty = LinearEqualityToPenalty(); qubo = lineq2penalty.convert(qp_eq_bin)
+        therefore, in our function, cqm = qubo??
+        qaoa = MinimumEigenOptimizer(QAOA(reps=1, quantum_instance=backend)) -> result_qaoa = qaoa.solve(qubo)
+    '''
+    num_cases = cases.num_cases
+    dx = {}
+    dy = {}
+    dz = {}
+    for i in range(num_cases):
+        p1 = list(
+            permutations([cases.length[i], cases.width[i], cases.height[i]]))
+        dx[i] = 0
+        dy[i] = 0
+        dz[i] = 0
+        for j, (a, b, c) in enumerate(p1):
+            dx[i] += a * vars.o[i, j]
+            dy[i] += b * vars.o[i, j]
+            dz[i] += c * vars.o[i, j]
+
+        
+
+        vars.mdl.add_constraint(vars.mdl.sum([vars.o[i, k] for k in range(6)]) == 1, f'orientation_sum_{i}')
+
+    return [dx, dy,  dz]
+
+
+def _add_geometric_constraints(vars, bins, cases, effective_dimensions: list):
+    num_cases = cases.num_cases
+    num_bins = bins.num_bins
+    dx, dy, dz = effective_dimensions
+
+    for i, k in combinations(range(num_cases), r=2):
+        # Add discrete constraint (giving condition that selector can only take one variable
+        vars.mdl.add_constraint(vars.mdl.sum([vars.selector[i, k, s] for s in range(6)]) == 1,
+                           f'discrete_{i}_{k}')
+        # cqm.add_discrete(quicksum([vars.selector[i, k, s] for s in range(6)]),
+        #                  label=f'discrete_{i}_{k}')
+        for j in range(num_bins):
+            cases_on_same_bin = vars.bin_loc[i, j] * vars.bin_loc[k, j]
+
+            # Add overlap constraints
+            vars.mdl.add_constraint(
+                - (2 - cases_on_same_bin - vars.selector[i, k, 0]) * num_bins * bins.length +
+                (vars.x[i] + dx[i] - vars.x[k]) <= 0,
+                f'overlap_{i}_{k}_{j}_0')
+
+            vars.mdl.add_constraint(
+                -(2 - cases_on_same_bin - vars.selector[i, k, 1]) * bins.width +
+                (vars.y[i] + dy[i] - vars.y[k]) <= 0,
+                f'overlap_{i}_{k}_{j}_1')
+
+            vars.mdl.add_constraint(
+                -(2 - cases_on_same_bin - vars.selector[i, k, 2]) * bins.height +
+                (vars.z[i] + dz[i] - vars.z[k]) <= 0,
+                f'overlap_{i}_{k}_{j}_2')
+
+            vars.mdl.add_constraint(
+                - (2 - cases_on_same_bin - vars.selector[i, k, 3]) * num_bins * bins.length +
+                (vars.x[k] + dx[k] - vars.x[i]) <= 0,
+                f'overlap_{i}_{k}_{j}_3')
+            #
+            vars.mdl.add_constraint(
+                -(2 - cases_on_same_bin - vars.selector[i, k, 4]) * bins.width +
+                (vars.y[k] + dy[k] - vars.y[i]) <= 0,
+                f'overlap_{i}_{k}_{j}_4')
+
+            vars.mdl.add_constraint(
+                -(2 - cases_on_same_bin - vars.selector[i, k, 5]) * bins.height +
+                (vars.z[k] + dz[k] - vars.z[i]) <= 0,
+                f'overlap_{i}_{k}_{j}_5')
+
+    if num_bins > 1:
+        for i in range(num_cases):
+            # Add discrete constraint for max packed cases
+            vars.mdl.add_constraint(vars.mdl.sum([vars.bin_loc[i, j] for j in range(num_bins)]) == 1,
+                               f'case_{i}_max_packed')
+
+
+def _add_boundary_constraints(vars, bins,
+                              cases, effective_dimensions: list):
+    num_cases = cases.num_cases
+    num_bins = bins.num_bins
+    dx, dy, dz = effective_dimensions
+    for i in range(num_cases):
+        for j in range(num_bins):
+            vars.mdl.add_constraint(vars.z[i] + dz[i] - vars.bin_height[j] -
+                               (1 - vars.bin_loc[i, j]) * bins.height <= 0,
+                               f'maxx_height_{i}_{j}')
+
+            vars.mdl.add_constraint(vars.x[i] + dx[i] - bins.length * (j + 1)
+                               - (1 - vars.bin_loc[i, j]) *
+                               num_bins * bins.length <= 0,
+                               f'maxx_{i}_{j}_less')
+
+            vars.mdl.add_constraint(
+                vars.x[i] - bins.length * j * vars.bin_loc[i, j] >= 0,
+                f'maxx_{i}_{j}_greater')
+
+            vars.mdl.add_constraint(
+                vars.y[i] + dy[i] <= bins.width,
+                f'maxy_{i}_{j}_less')
+
+
+def _define_objective(vars,
+                      bins, cases, effective_dimensions: list):
+    num_cases = cases.num_cases
+    num_bins = bins.num_bins
+    dx, dy, dz = effective_dimensions
+
+    x = vars.mdl.binary_var_list([f"x{i}" for i in range(num_bins)])
+
+    objective = vars.mdl.sum([x[i] for i in range(num_bins)])
+
+    vars.mdl.minimize(objective)
+
+    # First term of objective: minimize average height of cases
+    first_obj_term = vars.mdl.sum(
+        vars.z[i] + dz[i] for i in range(num_cases)) / num_cases
+
+    # Second term of objective: minimize height of the case at the top of the
+    # bin
+    second_obj_term = vars.mdl.sum(vars.bin_height[j] for j in range(num_bins))
+
+    # Third term of the objective:
+    third_obj_term = vars.mdl.sum(
+        bins.height * vars.bin_on[j] for j in range(num_bins))
+
+    first_obj_coefficient = 1
+    second_obj_coefficient = 1
+    third_obj_coefficient = 1
+
+    vars.mdl.minimize(first_obj_coefficient * first_obj_term +
+                 second_obj_coefficient * second_obj_term +
+                 third_obj_coefficient * third_obj_term)
+
+def build_mdl(bins, cases):
+    mdl = vars.mdl
+    effective_dimensions = _add_orientation_constraints(vars, cases)
+    _add_bin_on_constraint(vars, bins, cases)
+    _add_geometric_constraints(vars, bins, cases, effective_dimensions)
+    _add_boundary_constraints(vars, bins, cases, effective_dimensions)
+    _define_objective(vars, bins, cases, effective_dimensions)
+
+    return mdl, effective_dimensions
+
+def call_solver(mdl,
+                use_eigen_solver: bool = True):
+    """Helper function to call the EigenMinimizer Solver.
+
+    Args:
+        cqm: A ``CQM`` object that defines the 3D bin packing problem.
+        time_limit: Time limit parameter to pass on to the CQM sampler.
+    """
+
+    if use_eigen_solver:
+        # qp = QuadraticProgram()
+        qp = from_docplex_mp(mdl)
+        print(qp.export_as_lp_string())
+        print(1)
+        ineq2eq = InequalityToEquality()
+        print(2)
+        # print(ineq2eq.export_as_lp_string())
+        qp_eq = ineq2eq.convert(qp)
+        print(3)
+        print(qp_eq.export_as_lp_string())
+        int2bin = IntegerToBinary()
+        print(4)
+        qp_eq_bin = int2bin.convert(qp_eq)
+        print(5)
+        print(qp_eq_bin.export_as_lp_string())
+        lineq2penalty = LinearEqualityToPenalty()
+        print(6)
+        qubo = lineq2penalty.convert(qp_eq_bin)
+        print(7)
+        backend = Aer.get_backend("qasm_simulator")
+        qaoa = MinimumEigenOptimizer(QAOA(reps=1, quantum_instance=backend))
+        print(8)
+        try:
+            result_qaoa = qaoa.solve(qubo)
+            print(9)
+            return result_qaoa
+        except ValueError:
+            raise RuntimeError(
+                "Runtime Error"
+            )
+data_filepath = 'input/sample_data_1.txt'
+data = read_instance(data_filepath)
+cases = Cases(data)
+bins = Bins(data, cases)
+
+vars = Variables(cases, bins)
+print(vars)
+mdl, effective_dimensions = build_mdl(bins, cases)
+print(mdl)
+use_eigen_solver=True
+result_qaoa = call_solver(mdl, use_eigen_solver)
+print(result_qaoa)
